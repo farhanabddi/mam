@@ -1,14 +1,24 @@
-import { supabase } from "../../services/supabaseClient";
+import { supabase } from '../../services/supabaseClient';
 
-export async function getAllProducts() {
-  const { data, error } = await supabase
-    .from("products")
-    .select("*");
+export const productService = {
+  async getProducts() {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('name', { ascending: true });
 
-  if (error) {
-    console.error(error);
-    throw error;
+    if (error) throw new Error(error.message);
+    return data;
+  },
+
+  async createProduct(productData) {
+    const { data, error } = await supabase
+      .from('products')
+      .insert([productData])
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
   }
-
-  return data;
-}
+};
