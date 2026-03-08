@@ -1,21 +1,20 @@
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
+
+// Notice the "../" which tells it to go up one folder to find AppRoutes
 import AppRoutes from '../routes/AppRoutes';
 
-/**
- * Root Application Component
- * Responsible for initializing global providers (Routing, Auth, etc.)
- * Strictly no UI layout or business logic should reside here.
- */
-const App = () => {
+// Notice the "../" here too, to go up and then into the contexts folder
+import { AuthProvider } from '../contexts/AuthContext'; 
+
+function App() {
   return (
-    <BrowserRouter>
-      {/* TODO: AuthProvider will be injected here later to manage 
-        the admin session required by Supabase RLS policies.
-      */}
-      <AppRoutes />
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthProvider>
   );
-};
+}
 
 export default App;
