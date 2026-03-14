@@ -1,93 +1,95 @@
 import { useState, useMemo } from 'react';
 import { salesService } from './salesService';
 
-export const useCart = () => {
+export function useCart() {
   const [cartItems, setCartItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // --- Cart Operations ---
+  // 1. Function to handle clicking a product box
   const addToCart = (product) => {
-    setCartItems(prev => {
-      const existing = prev.find(item => item.product_id === product.id);
+    console.log("🖱️ Product Clicked! Adding to cart:", product); // <--- DEBUGGING LINE
+
+    setCartItems((prevItems) => {
+      // Check if the item is already in the cart
+      const existingItem = prevItems.find((item) => item.product_id === product.id);
       
-      if (existing) {
-        // Prevent adding more than stock (UI protection)
-        if (!product.is_service && existing.quantity >= product.stock) return prev;
-        return prev.map(item => 
-          item.product_id === product.id 
-            ? { ...item, quantity: item.quantity + 1 } 
+      if (existingItem) {
+        // If it is, just increase the quantity by 1
+        return prevItems.map((item) =>
+          item.product_id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
             : item
         );
+      } else {
+        // If it's not, add it to the cart list as a brand new item
+        return [
+          ...prevItems,
+          {
+            product_id: product.id,
+            name: product.name,
+            price: Number(product.price || 0), // Safe math
+            quantity: 1,
+          },
+        ];
       }
-      
-      return [...prev, { 
-        product_id: product.id, 
-        name: product.name,
-        price: Number(product.selling_price || product.price), // Handled depending on your frontend prop name
-        quantity: 1,
-        is_service: product.is_service,
-        max_stock: product.stock
-      }];
     });
   };
 
+  // 2. Function to handle the + and - buttons in the cart
+  const updateQuantity = (productId, change) => {
+    setCartItems((prevItems) => {
+      return prevItems.map((item) => {
+        if (item.product_id === productId) {
+          const newQuantity = item.quantity + change;
+          // Don't let quantity drop below 1 using the minus button
+          return { ...item, quantity: Math.max(1, newQuantity) };
+        }
+        return item;
+      });
+    });
+  };
+
+  // 3. Function to handle the red X button
   const removeFromCart = (productId) => {
-    setCartItems(prev => prev.filter(item => item.product_id !== productId));
-  };
-  
-  const updateQuantity = (productId, delta) => {
-    setCartItems(prev => prev.map(item => {
-      if (item.product_id === productId) {
-        const newQty = item.quantity + delta;
-        if (newQty < 1 || (!item.is_service && newQty > item.max_stock)) return item;
-        return { ...item, quantity: newQty };
-      }
-      return item;
-    }));
+    setCartItems((prevItems) => prevItems.filter((item) => item.product_id !== productId));
   };
 
-  const clearCart = () => setCartItems([]);
+  const clearCart = () => {
+    setCartItems([]);
+  };
 
-  // --- UI Calculations Only ---
-  // The frontend calculates this ONLY to show the cashier the number on screen.
-  // It is NOT sent to the database. The database recalculates this securely.
+  // 4. Automatically calculate the total price
   const cartTotal = useMemo(() => {
-    return cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   }, [cartItems]);
 
-  // --- The Secure Checkout Flow ---
-  const checkout = async (checkoutDetails) => {
-    if (cartItems.length === 0) return { success: false, error: "Cart is empty" };
-    
+  // 5. Send the final data to the database
+  const checkout = async ({ saleType, paymentMethod, customerId }) => {
     setIsLoading(true);
     setError(null);
-    
     try {
-      // 1. Build the minimalist, secure payload
+      // Build the exact JSON format your Supabase database is expecting
       const payload = {
-        sale_type: checkoutDetails?.saleType || 'cash',
-        payment_method: checkoutDetails?.paymentMethod || 'cash',
-        customer_id: checkoutDetails?.customerId || null, // Required if sale_type is 'credit'
-        
-        // Notice: No prices, no totals. Just IDs and Quantities.
+        sale_type: saleType,
+        payment_method: paymentMethod,
+        customer_id: customerId,
         items: cartItems.map(item => ({
           product_id: item.product_id,
-          quantity: item.quantity
+          quantity: item.quantity,
+          unit_price: item.price
         }))
       };
 
-      console.log("Sending secure payload to backend:", payload);
+      console.log("🛒 Preparing to send payload to Supabase:", payload);
 
-      // 2. Send to the new Database RPC
       const result = await salesService.processTransaction(payload);
       
-      // 3. Success! Clear cart
+      // If it succeeds, empty the cart
       clearCart();
-      return { success: true, receipt: result.receipt, backendTotal: result.total };
-
+      return { success: true, receipt: result };
+      
     } catch (err) {
-      console.error("Checkout failed:", err);
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
@@ -95,15 +97,15 @@ export const useCart = () => {
     }
   };
 
-  return { 
-    cartItems, 
-    cartTotal, 
-    isLoading, 
-    error, 
-    addToCart, 
-    removeFromCart, 
-    updateQuantity, 
-    clearCart, 
-    checkout 
+  return {
+    cartItems,
+    cartTotal,
+    isLoading,
+    error,
+    addToCart,
+    updateQuantity,
+    removeFromCart,
+    clearCart,
+    checkout
   };
-};
+}

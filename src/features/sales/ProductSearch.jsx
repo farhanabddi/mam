@@ -1,48 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { useCart } from './useCart';
 
-export default function ProductSearch() {
+// 1. ACCEPT addToCart FROM THE PARENT
+export default function ProductSearch({ addToCart }) {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  
-  // Bring in the addToCart function from our master hook
-  const { addToCart } = useCart();
 
-  // Fetch products when the component loads
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .order('name');
-          
+        const { data, error } = await supabase.from('products').select('*').order('name');
         if (error) throw error;
-        
-        // Ensure we always set an array, even if data is null
         setProducts(data || []);
       } catch (err) {
         console.error("Error fetching products:", err.message);
-        setProducts([]); // Fallback to empty array on error
+        setProducts([]); 
       } finally {
         setLoading(false);
       }
     };
-
     fetchProducts();
   }, []);
 
-  // THE CRITICAL FIX: (products || []) prevents the .filter() crash
   const filteredProducts = (products || []).filter(product => 
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search Bar */}
       <div className="mb-4">
         <input 
           type="text" 
@@ -53,7 +40,6 @@ export default function ProductSearch() {
         />
       </div>
 
-      {/* Product Grid */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="text-center p-8 text-gray-500">Loading products...</div>
