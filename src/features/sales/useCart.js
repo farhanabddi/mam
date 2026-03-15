@@ -1,34 +1,29 @@
 import { useState, useMemo } from 'react';
 import { salesService } from './salesService';
+import { supabase } from '../../services/supabaseClient'; // We need Supabase here to register the customer
 
 export function useCart() {
   const [cartItems, setCartItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // 1. Function to handle clicking a product box
   const addToCart = (product) => {
-    console.log("🖱️ Product Clicked! Adding to cart:", product); // <--- DEBUGGING LINE
-
     setCartItems((prevItems) => {
-      // Check if the item is already in the cart
       const existingItem = prevItems.find((item) => item.product_id === product.id);
       
       if (existingItem) {
-        // If it is, just increase the quantity by 1
         return prevItems.map((item) =>
           item.product_id === product.id
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       } else {
-        // If it's not, add it to the cart list as a brand new item
         return [
           ...prevItems,
           {
             product_id: product.id,
             name: product.name,
-            price: Number(product.price || 0), // Safe math
+            price: Number(product.price || 0),
             quantity: 1,
           },
         ];
@@ -36,13 +31,11 @@ export function useCart() {
     });
   };
 
-  // 2. Function to handle the + and - buttons in the cart
   const updateQuantity = (productId, change) => {
     setCartItems((prevItems) => {
       return prevItems.map((item) => {
         if (item.product_id === productId) {
           const newQuantity = item.quantity + change;
-          // Don't let quantity drop below 1 using the minus button
           return { ...item, quantity: Math.max(1, newQuantity) };
         }
         return item;
@@ -50,7 +43,6 @@ export function useCart() {
     });
   };
 
-  // 3. Function to handle the red X button
   const removeFromCart = (productId) => {
     setCartItems((prevItems) => prevItems.filter((item) => item.product_id !== productId));
   };
@@ -59,21 +51,40 @@ export function useCart() {
     setCartItems([]);
   };
 
-  // 4. Automatically calculate the total price
   const cartTotal = useMemo(() => {
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   }, [cartItems]);
 
-  // 5. Send the final data to the database
-  const checkout = async ({ saleType, paymentMethod, customerId }) => {
+  const checkout = async ({ saleType, paymentMethod, customerName, customerPhone }) => {
     setIsLoading(true);
     setError(null);
     try {
-      // Build the exact JSON format your Supabase database is expecting
+      let finalCustomerId = null;
+
+      // THE TRICK: If it is a credit sale, auto-register them to get an ID!
+      if (saleType === 'credit') {
+        const { data: newCustomer, error: customerError } = await supabase
+          .from('customers')
+          .insert([{ 
+            name: customerName, 
+            phone: customerPhone || 'No Phone' 
+          }])
+          .select('id')
+          .single();
+
+        if (customerError) {
+          throw new Error("Could not register the new credit customer: " + customerError.message);
+        }
+        
+        // Grab the newly generated database ID
+        finalCustomerId = newCustomer.id;
+      }
+
+      // Build the payload exactly how your working backend expects it
       const payload = {
         sale_type: saleType,
         payment_method: paymentMethod,
-        customer_id: customerId,
+        customer_id: finalCustomerId, // <-- We send the ID instead of text, preventing the decline!
         items: cartItems.map(item => ({
           product_id: item.product_id,
           quantity: item.quantity,
@@ -81,11 +92,7 @@ export function useCart() {
         }))
       };
 
-      console.log("🛒 Preparing to send payload to Supabase:", payload);
-
       const result = await salesService.processTransaction(payload);
-      
-      // If it succeeds, empty the cart
       clearCart();
       return { success: true, receipt: result };
       
